@@ -1,0 +1,38 @@
+groups:
+  - name: rentguard
+    rules:
+      - alert: RetrievalEmpty
+        expr: increase(rag_retrieval_empty_total[5m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG retrieval returned zero chunks repeatedly"
+          description: "More than 3 empty retrievals in the last 5 minutes. Check jurisdiction normalization and Chroma metadata."
+
+      - alert: HighRetrievalLatency
+        expr: histogram_quantile(0.95, rate(rag_retrieval_latency_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG retrieval p95 latency is above 5 seconds"
+          description: "Retrieval p95 latency has exceeded 5s for 10 minutes."
+
+      - alert: CitationCheckFailing
+        expr: increase(citation_check_total{status="fail"}[10m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Citation checks are failing"
+          description: "More than 5 citation check failures in the last 10 minutes."
+
+      - alert: API5xxSpike
+        expr: increase(backend_requests_total{status="500"}[5m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend API 5xx spike"
+          description: "More than 3 backend 5xx responses in the last 5 minutes."

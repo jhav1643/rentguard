@@ -1,0 +1,109 @@
+# ci-cd/helm/values-prod.yaml
+# Prod: HA, autoscaling, TLS, PDBs, stricter resources.
+
+global:
+  environment: prod
+  imageRegistry: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  namespace: rentguard-prod
+
+rag-api:
+  replicaCount: 3
+  image:
+    repository: rentguard-rag-api
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 2Gi }
+  env:
+    ENVIRONMENT: prod
+    RAG_TOP_K: "5"
+  ingress:
+    enabled: true
+    host: rag.rentguard.example.com
+    tls: true
+    tlsSecretName: rentguard-prod-tls
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+backend-api:
+  replicaCount: 3
+  image:
+    repository: rentguard-backend-api
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 2Gi }
+  env:
+    ENVIRONMENT: prod
+  ingress:
+    enabled: true
+    host: api.rentguard.example.com
+    tls: true
+    tlsSecretName: rentguard-prod-tls
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+classifier-service:
+  replicaCount: 2
+  image:
+    repository: rentguard-classifier
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 2Gi }
+  env:
+    ENVIRONMENT: prod
+    MODEL_ALIAS: production
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: rentguard-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: rentguard.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+ingestion:
+  replicaCount: 2
+  image:
+    repository: rentguard-ingestion
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 2Gi }
+  env:
+    ENVIRONMENT: prod
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+shared-storage:
+  size: 50Gi

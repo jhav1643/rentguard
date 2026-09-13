@@ -1,82 +1,168 @@
-# docker-compose.yml
-#
-# Live services (start with plain `docker compose up`):
-#   rag_api, backend_api
-#
-# Batch jobs (run explicitly, one-shot):
-#   docker compose --profile setup run --rm ingestion
-#   docker compose --profile setup run --rm classifier_service
-#
-# No depends_on between rag_api and backend_api — they don't call each
-# other over HTTP (the agent imports retriever.py in-process).
-
 services:
-
-  # ---------------------------------------------------------------
-  # Batch / setup jobs — opt-in via --profile setup
-  # ---------------------------------------------------------------
-
+  # ---------------------------------------------------------------------------
+  # Batch / setup jobs (run once, not on every `up`)
+  # ---------------------------------------------------------------------------
   ingestion:
     build:
       context: .
       dockerfile: services/ingestion/Dockerfile
-    profiles: ["setup"]
-    env_file: .env
     working_dir: /app
+    profiles: ["setup"]
     restart: "no"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlflow/mlflow.db
+      - EMBEDDING_TOKEN=${EMBEDDING_TOKEN}
+      - HF_TOKEN=${HF_TOKEN}
+      - PYTHONUNBUFFERED=1
     volumes:
-      - ./data/raw:/app/data/raw
-      - ./data/processed:/app/data/processed
-      - ./data/vectorstore:/app/data/vectorstore
+      - ./data:/app/data
+      - ./mlflow:/app/mlflow
+    command: ["python", "-m", "services.ingestion.run_ingestion"]
 
   classifier_service:
     build:
       context: .
       dockerfile: services/classifier_service/Dockerfile
-    profiles: ["setup"]
-    env_file: .env
     working_dir: /app
+    profiles: ["setup"]
     restart: "no"
-    volumes:
-      - ./data/labeled:/app/data/labeled
-      - ./data/features:/app/data/features
-      # Mount the directory, not mlflow.db, so Docker doesn't silently
-      # create a directory where MLflow expects a file.
-      - ./mlflow:/app/mlflow
-      - ./mlruns:/app/mlruns
-      - ./metrics:/app/metrics
     environment:
-      MLFLOW_TRACKING_URI: "sqlite:////app/mlflow/mlflow.db"
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlflow/mlflow.db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+      - ./mlflow:/app/mlflow
+      - ./metrics:/app/metrics
+    command: ["python", "-m", "services.classifier_service.training.train"]
 
-  # ---------------------------------------------------------------
-  # Live services — start on plain `docker compose up`
-  # ---------------------------------------------------------------
-
+  # ---------------------------------------------------------------------------
+  # Live services
+  # ---------------------------------------------------------------------------
   rag_api:
     build:
       context: .
       dockerfile: services/rag_api/Dockerfile
-    env_file: .env
     working_dir: /app
+    restart: unless-stopped
     ports:
       - "5000:5000"
+    environment:
+      - PORT=5000
+      - EMBEDDING_TOKEN=${EMBEDDING_TOKEN}
+      - HF_TOKEN=${HF_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RAG_LLM_MODEL=${RAG_LLM_MODEL:-gpt-4o-mini}
+      - PYTHONUNBUFFERED=1
     volumes:
-      - ./data/vectorstore:/app/data/vectorstore
-      - ./data/raw:/app/data/raw   # jurisdiction discovery at startup
-
+      - ./data:/app/data:ro
+      - ./services:/app/services:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:5000/health'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      backend_api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
   backend_api:
     build:
       context: .
-      dockerfile: services/backend-api/Dockerfile
-    env_file: .env
+      dockerfile: services/backend_api/Dockerfile
     working_dir: /app
+    restart: unless-stopped
     ports:
       - "5001:5001"
-    volumes:
-      - ./data/vectorstore:/app/data/vectorstore
-      - ./data/raw:/app/data/raw  
-      - ./data/features:/app/data/features
-      - ./mlflow:/app/mlflow
-      - ./mlruns:/app/mlruns
     environment:
-      MLFLOW_TRACKING_URI: "sqlite:////app/mlflow/mlflow.db"
+      - PORT=5001
+      - EMBEDDING_TOKEN=${EMBEDDING_TOKEN}
+      - HF_TOKEN=${HF_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BACKEND_LLM_MODEL=${BACKEND_LLM_MODEL:-gpt-4o-mini}
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlflow/mlflow.db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data:ro
+      - ./services:/app/services:ro
+      - ./mlflow:/app/mlflow:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:5001/health'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # MLflow tracking server
+  # ---------------------------------------------------------------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "5002:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlflow/mlflow.db
+    volumes:
+      - ./mlflow:/app/mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////app/mlflow/mlflow.db
+      --default-artifact-root /app/mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - rag_api
+      - backend_api
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:

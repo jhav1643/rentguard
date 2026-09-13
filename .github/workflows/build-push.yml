@@ -1,68 +1,197 @@
-name: Build and Push Images
+name: Build and Push
 
 on:
-  workflow_run:
-    workflows: ["Test"]
-    types: [completed]
+  push:
     branches: [main]
-  workflow_dispatch: {}
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "ci-cd/reports/**"
+      - ".github/workflows/rag-eval-gate.yaml"
+      - ".github/workflows/model-eval-gate.yml"
+      - ".github/workflows/model-promotion-gate.yaml"
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to build (leave empty for all)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - ingestion
+          - classifier_service
+          - rag_api
+          - backend_api
+          - agent_orchestrator
+          - frontend
 
 permissions:
+  id-token: write
   contents: read
-  actions: read
+
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPO_PREFIX: rentguard
-  IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
 
 jobs:
-  build-push:
+  # ---------------------------------------------------------------------------
+  # Resolve the service list. If workflow_dispatch provided a single service,
+  # build only that one; otherwise build all.
+  # ---------------------------------------------------------------------------
+  prepare:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - name: Compute matrix
+        id: set-matrix
+        run: |
+          set -euo pipefail
+          ALL='["ingestion","classifier_service","rag_api","backend_api","agent_orchestrator","frontend"]'
+          PICKED='${{ github.event.inputs.service }}'
+
+          if [ -n "$PICKED" ]; then
+            MATRIX=$(jq -cn --arg s "$PICKED" '{service: [$s]}')
+          else
+            MATRIX=$(jq -cn --argjson all "$ALL" '{service: $all}')
+          fi
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve SHA
+        id: meta
+        run: |
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Build and push each service image.
+  # ---------------------------------------------------------------------------
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        service:
-          - { name: ingestion, dockerfile: services/ingestion/Dockerfile }
-          - {
-              name: classifier,
-              dockerfile: services/classifier_service/Dockerfile,
-            }
-          - { name: rag-api, dockerfile: services/rag_api/Dockerfile }
-          - { name: backend-api, dockerfile: services/backend_api/Dockerfile }
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.IMAGE_TAG }} # <- critical fix
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
-      - name: Configure AWS credentials
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Dockerfile path
+        id: paths
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.service }}" = "frontend" ]; then
+            echo "dockerfile=frontend/Dockerfile" >> "$GITHUB_OUTPUT"
+            echo "context=." >> "$GITHUB_OUTPUT"
+            echo "image=rentguard-frontend" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfile=services/${{ matrix.service }}/Dockerfile" >> "$GITHUB_OUTPUT"
+            echo "context=." >> "$GITHUB_OUTPUT"
+            echo "image=rentguard-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify Dockerfile exists
+        run: |
+          if [ ! -f "${{ steps.paths.outputs.dockerfile }}" ]; then
+            echo "::error::Dockerfile not found at ${{ steps.paths.outputs.dockerfile }}"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-build-${{ matrix.service }}
 
-      - name: Login to ECR
-        id: ecr-login
+      - name: Login to Amazon ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push ${{ matrix.service.name }}
-        env:
-          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-        run: |
-          IMAGE="$REGISTRY/${ECR_REPO_PREFIX}-${{ matrix.service.name }}"
-          docker buildx build \
-            --file ${{ matrix.service.dockerfile }} \
-            --tag "$IMAGE:${IMAGE_TAG}" \
-            --cache-from type=gha \
-            --cache-to type=gha,mode=max \
-            --push \
-            .
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.paths.outputs.context }}
+          file: ${{ steps.paths.outputs.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ steps.paths.outputs.image }}:${{ needs.prepare.outputs.sha }}
+            ${{ env.ECR_REGISTRY }}/${{ steps.paths.outputs.image }}:main
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          provenance: true
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
 
-      - name: Summary
+      - name: Record image digest
         run: |
-          echo "Pushed ${{ matrix.service.name }}:${IMAGE_TAG}" >> $GITHUB_STEP_SUMMARY
+          echo "### ${{ matrix.service }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- image: \`${{ env.ECR_REGISTRY }}/${{ steps.paths.outputs.image }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag:   \`${{ needs.prepare.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy scan pushed image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ steps.paths.outputs.image }}:${{ needs.prepare.outputs.sha }}
+          format: "sarif"
+          output: "trivy-${{ matrix.service }}.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-${{ matrix.service }}.sarif"
+          category: "trivy-${{ matrix.service }}"
+
+  # ---------------------------------------------------------------------------
+  # Emit a machine-readable manifest of images built this run. Downstream
+  # workflows (deploy.yml) can consume this artifact to know exactly what to
+  # roll out.
+  # ---------------------------------------------------------------------------
+  manifest:
+    needs: [prepare, build]
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write image manifest
+        run: |
+          cat > images.json <<EOF
+          {
+            "sha": "${{ needs.prepare.outputs.sha }}",
+            "registry": "${{ env.ECR_REGISTRY }}",
+            "images": {
+              "ingestion": "${{ env.ECR_REGISTRY }}/rentguard-ingestion:${{ needs.prepare.outputs.sha }}",
+              "classifier_service": "${{ env.ECR_REGISTRY }}/rentguard-classifier_service:${{ needs.prepare.outputs.sha }}",
+              "rag_api": "${{ env.ECR_REGISTRY }}/rentguard-rag_api:${{ needs.prepare.outputs.sha }}",
+              "backend_api": "${{ env.ECR_REGISTRY }}/rentguard-backend_api:${{ needs.prepare.outputs.sha }}",
+              "agent_orchestrator": "${{ env.ECR_REGISTRY }}/rentguard-agent_orchestrator:${{ needs.prepare.outputs.sha }}",
+              "frontend": "${{ env.ECR_REGISTRY }}/rentguard-frontend:${{ needs.prepare.outputs.sha }}"
+            }
+          }
+          EOF
+          cat images.json
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-manifest
+          path: images.json
+          retention-days: 30
