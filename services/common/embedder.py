@@ -25,10 +25,7 @@ _embedding_instance = None
  
  
 def get_embeddings() -> HuggingFaceEndpointEmbeddings:
-    """Create (once) and return the embedding client. Deliberately takes
-    no arguments -- creating the client and validating chunk data are
-    two separate concerns, so this stays testable in isolation.
-    """
+    
     global _embedding_instance
     if _embedding_instance is None:
         _embedding_instance = HuggingFaceEndpointEmbeddings(

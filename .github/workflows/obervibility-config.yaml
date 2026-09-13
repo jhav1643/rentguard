@@ -1,0 +1,79 @@
+name: Observability Config
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/observability/**"
+      - "docker-compose.yml"
+      - ".github/workflows/observability-config.yml"
+  pull_request:
+    paths:
+      - "infra/observability/**"
+      - "docker-compose.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose
+        run: docker compose config -q
+
+      - name: Validate Prometheus config
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "${{ github.workspace }}/infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            prom/prometheus:v2.54.1 \
+            promtool check config /etc/prometheus/prometheus.yml
+
+      - name: Validate alert rules
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            prom/prometheus:v2.54.1 \
+            promtool check rules /etc/prometheus/alerts.yml
+
+      - name: Validate Grafana dashboard JSON
+        run: |
+          for f in infra/observability/grafana/dashboards/*.json; do
+            python -c "import json,sys; json.load(open('$f'))" || exit 1
+          done
+
+      - name: Validate Grafana provisioning YAML
+        run: |
+          pip install pyyaml
+          python - <<'PY'
+          import glob, yaml, sys
+          for f in glob.glob("infra/observability/grafana/provisioning/**/*.yml", recursive=True):
+              try:
+                  yaml.safe_load(open(f))
+              except Exception as e:
+                  print(f"YAML error in {f}: {e}")
+                  sys.exit(1)
+          print("OK")
+          PY
+      - name: Trivy scan prometheus image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: prom/prometheus:v2.54.1
+          format: sarif
+          output: trivy-prometheus.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Trivy scan grafana image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: grafana/grafana:11.2.0
+          format: sarif
+          output: trivy-grafana.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .

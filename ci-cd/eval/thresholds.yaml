@@ -51,3 +51,7 @@ rag:
 
   # Allow a small number of individual rows to fail before failing the gate.
   max_failed_rows_pct: 5
+observability:
+  retrieval_p95_ms: 5000
+  empty_retrieval_rate: 0.05
+  citation_fail_rate: 0.10

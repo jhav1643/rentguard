@@ -12,3 +12,5 @@ PyMuPDF==1.24.11
 docx2txt==0.9
 langchain-huggingface>=0.1.0
 huggingface_hub>=0.31.0
+prometheus_flask_exporter==0.23.2
+prometheus_client==0.21.1

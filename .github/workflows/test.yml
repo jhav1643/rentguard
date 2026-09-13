@@ -48,6 +48,8 @@ jobs:
           pip install langchain-chroma chromadb
       - name: Run unit tests
         run: pytest tests/unit/ -v --cov=services --cov-report=xml
+      - name: Validate compose file
+        run: docker compose config -q
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
