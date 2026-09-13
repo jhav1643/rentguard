@@ -4,3 +4,4 @@ description: Rentguard RAG API service
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+icon: https://raw.githubusercontent.com/jhav1643/rentguard/main/docs/logo.svg

@@ -58,7 +58,7 @@ spec:
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.persistence.enabled }}
+            {{- if .Values.persistence.enabled }}
           volumeMounts:
             {{- range .Values.persistence.mounts }}
             - name: shared-data

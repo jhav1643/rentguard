@@ -26,7 +26,7 @@ spec:
               protocol: TCP
           envFrom:
             - secretRef:
-                name: {{ required "envSecretName is required — create the Secret first" .Values.envSecretName }}
+                name: {{ required "envSecretName is required" .Values.envSecretName }}
           env:
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
@@ -58,17 +58,3 @@ spec:
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.persistence.enabled }}
-          volumeMounts:
-            {{- range .Values.persistence.mounts }}
-            - name: shared-data
-              mountPath: {{ .mountPath }}
-              subPath: {{ .subPath }}
-            {{- end }}
-          {{- end }}
-      {{- if .Values.persistence.enabled }}
-      volumes:
-        - name: shared-data
-          persistentVolumeClaim:
-            claimName: {{ .Values.persistence.claimName }}
-      {{- end }}

@@ -1,0 +1,31 @@
+# infra/helm/classifier_service/values-prod.yaml
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+envSecretName: rentguard-env
+
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+  ENVIRONMENT: prod
+  MODEL_ALIAS: production
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+serviceAccount:
+  create: true
+  name: classifier-service
+  annotations: {}
+
+persistence:
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []

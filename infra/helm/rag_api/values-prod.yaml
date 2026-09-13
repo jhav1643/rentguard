@@ -1,0 +1,61 @@
+# infra/helm/rag_api/values-prod.yaml
+replicaCount: 3
+
+image:
+  repository: "" # injected by CI
+  tag: "" # injected by CI
+  pullPolicy: IfNotPresent
+
+envSecretName: rentguard-env
+
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+  ENVIRONMENT: prod
+  RAG_TOP_K: "5"
+
+service:
+  type: ClusterIP
+  port: 5000
+  targetPort: 5000
+
+probes:
+  startup:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 30
+  liveness:
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+serviceAccount:
+  create: true
+  name: rag-api
+  annotations: {}
+
+podDisruptionBudget:
+  minAvailable: 2
+
+persistence:
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []

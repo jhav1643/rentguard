@@ -3,7 +3,7 @@ kind: Job
 metadata:
   # -- Tag in the name so each upgrade creates a new Job rather than
   #    attempting to mutate an immutable one.
-  name: {{ include "chart.fullname" . }}-{{ .Values.image.tag | replace "." "-" }}
+  generateName: {{ include "chart.fullname" . }}-{{ .Values.image.tag | replace "." "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "chart.labels" . | nindent 4 }}
