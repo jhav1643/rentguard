@@ -1,0 +1,122 @@
+schema: '2.0'
+stages:
+  data:
+    cmd: python -m services.classifier_service.training.data_prep
+    deps:
+    - path: data/labeled/clauses.csv
+      hash: md5
+      md5: 5ab21d33efeeece5eae286f1df9fa8a0
+      size: 251924
+    - path: services/classifier_service/training/data_prep.py
+      hash: md5
+      md5: 4fae2ea13b692de0c93499c900a9e1fc
+      size: 10390
+    - path: services/classifier_service/training/feature_engineering.py
+      hash: md5
+      md5: 54dff1df9794bd09d48823cf488f6de6
+      size: 8145
+    - path: services/common/embedder.py
+      hash: md5
+      md5: 87d8cd89f049ae0506e49828f1f497e9
+      size: 2919
+    params:
+      params.yml:
+        data:
+          test_size: 0.15
+          variable_size: 0.15
+          random_state: 42
+          threshold: 10
+        feature:
+          batch_size: 64
+    outs:
+    - path: data/features/clause_features.parquet
+      hash: md5
+      md5: 66f7e34c3c65a5f540179f55e099b040
+      size: 6187425
+    - path: data/features/label_encoder.joblib
+      hash: md5
+      md5: 65977bf14a6991fa154afed26fe77d0c
+      size: 502
+    - path: data/features/preprocessor.joblib
+      hash: md5
+      md5: 417d6f944b2850462cbb029bfe594df5
+      size: 5865
+    - path: data/features/test.npz
+      hash: md5
+      md5: efb21b9f94e618393346d02d195bb0d1
+      size: 1174951
+    - path: data/features/train.npz
+      hash: md5
+      md5: dac15485d36abb1c10393cba69916f83
+      size: 5457320
+    - path: data/features/val.npz
+      hash: md5
+      md5: 8b819f9a08d848ab3129cb82e98f5515
+      size: 1166470
+  train:
+    cmd: python -m services.classifier_service.training.train
+    deps:
+    - path: data/features/label_encoder.joblib
+      hash: md5
+      md5: 65977bf14a6991fa154afed26fe77d0c
+      size: 502
+    - path: data/features/train.npz
+      hash: md5
+      md5: dac15485d36abb1c10393cba69916f83
+      size: 5457320
+    - path: data/features/val.npz
+      hash: md5
+      md5: 8b819f9a08d848ab3129cb82e98f5515
+      size: 1166470
+    - path: services/classifier_service/mlflow/mlflow_util.py
+      hash: md5
+      md5: 2bb0479c29314931f82383f6e74573cd
+      size: 721
+    - path: services/classifier_service/training/train.py
+      hash: md5
+      md5: 760b7fe7386b62da95237c3b27fde8d3
+      size: 7706
+    params:
+      params.yml:
+        mlflow:
+          experiment_name: rentguard-risk-classifier
+          registered_model_name: rentguard-risk-classifier
+          champion_alias: champion
+        train:
+          random_state: 42
+          logistic:
+            max_itr: 1000
+          gradient_booster:
+            n_estimators: 200
+            max_depth: 3
+            learning_rate: 0.1
+  evaluate:
+    cmd: python -m services.classifier_service.training.evaluate
+    deps:
+    - path: data/features/label_encoder.joblib
+      hash: md5
+      md5: 65977bf14a6991fa154afed26fe77d0c
+      size: 502
+    - path: data/features/test.npz
+      hash: md5
+      md5: efb21b9f94e618393346d02d195bb0d1
+      size: 1174951
+    - path: services/classifier_service/mlflow/mlflow_util.py
+      hash: md5
+      md5: 2bb0479c29314931f82383f6e74573cd
+      size: 721
+    - path: services/classifier_service/training/evaluate.py
+      hash: md5
+      md5: cda6d23b000b77f4da4ee9508d0d7519
+      size: 7305
+    params:
+      params.yml:
+        mlflow:
+          experiment_name: rentguard-risk-classifier
+          registered_model_name: rentguard-risk-classifier
+          champion_alias: champion
+    outs:
+    - path: metrics/eval_metrics.json
+      hash: md5
+      md5: 2d17a86ed7b55fda61bd69a81685d592
+      size: 580

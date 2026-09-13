@@ -1,0 +1,76 @@
+name: Deploy to EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy"
+        required: true
+        default: "latest"
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, prod]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-eks-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: rentguard-demo-eks
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }} # <- approval gate for prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Ensure shared PVC exists
+        run: helm upgrade --install storage infra/helm/shared-storage --wait --atomic
+
+      - name: Deploy live services
+        run: |
+          helm upgrade --install rag infra/helm/rag-api \
+            --set image.tag="${{ inputs.image_tag }}" \
+            --wait --atomic --timeout 5m
+          helm upgrade --install backend infra/helm/backend-api \
+            --set image.tag="${{ inputs.image_tag }}" \
+            --wait --atomic --timeout 5m
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/rag-rag-api --timeout=180s
+          kubectl rollout status deployment/backend-backend-api --timeout=180s
+
+      - name: Smoke test
+        run: |
+          kubectl get pods -l app.kubernetes.io/instance=rag
+          kubectl get pods -l app.kubernetes.io/instance=backend
+          # TODO: real HTTP health check against ingress
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          helm rollback rag --wait || true
+          helm rollback backend --wait || true

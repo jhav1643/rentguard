@@ -1,0 +1,16 @@
+{
+  "promoted_version": 1,
+  "test_macro_f1": 0.5966604711606752,
+  "test_accuracy": 0.6115107913669064,
+  "per_class_f1": {
+    "Caution": 0.4842105263157895,
+    "High Risk": 0.5925925925925926,
+    "Safe": 0.7131782945736435
+  },
+  "all_versions_compared": [
+    {
+      "version": 1,
+      "test_macro_f1": 0.5966604711606752
+    }
+  ]
+}

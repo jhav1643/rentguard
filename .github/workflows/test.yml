@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install lint deps
+        run: pip install flake8
+      - name: Run flake8 (non-blocking for now)
+        run: flake8 services/ --max-line-length=120 --exit-zero
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    env:
+      EMBEDDING_TOKEN: dummy-token-for-ci-import-only
+      MODEL_NAME: dummy-model-for-ci-import-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov numpy pandas
+          pip install "langchain-huggingface>=0.1.0" "huggingface_hub>=0.31.0" python-dotenv
+          pip install langchain-chroma chromadb
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --cov=services --cov-report=xml
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore

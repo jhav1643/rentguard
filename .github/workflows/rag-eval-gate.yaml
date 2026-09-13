@@ -1,0 +1,87 @@
+name: RAG Eval Gate
+
+# Runs when RAG-relevant files change. Evaluates retrieval + generation
+# quality against a golden set. Blocks merge if scores drop below thresholds.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/rag_api/**"
+      - "services/common/embedder.py"
+      - "services/common/retriever.py"
+      - "data/rag_golden/**"
+      - "ci-cd/eval/rag_gate.py"
+      - "ci-cd/eval/thresholds.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/rag_api/**"
+      - "services/common/embedder.py"
+      - "services/common/retriever.py"
+      - "ci-cd/eval/rag_gate.py"
+      - "ci-cd/eval/thresholds.yaml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  EMBEDDING_TOKEN: ${{ secrets.EMBEDDING_TOKEN }}
+  MODEL_NAME: ${{ secrets.RAG_MODEL_NAME }}
+
+jobs:
+  rag-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r services/rag_api/requirements.txt
+          pip install pyyaml pandas numpy
+
+      - name: Configure AWS credentials (for S3 golden set)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch golden set
+        run: |
+          if [ ! -f data/rag_golden/golden.jsonl ]; then
+            echo "Golden set not in repo, pulling from S3"
+            aws s3 cp s3://${{ secrets.RAG_GOLDEN_BUCKET }}/golden.jsonl data/rag_golden/golden.jsonl
+          fi
+
+      - name: Run RAG gate
+        id: gate
+        run: |
+          python ci-cd/eval/rag_gate.py \
+            --golden-set data/rag_golden/golden.jsonl \
+            --thresholds ci-cd/eval/thresholds.yaml \
+            --output ci-cd/reports/rag_eval_report.json
+
+      - name: Show report
+        if: always()
+        run: |
+          echo "## RAG Eval Report" >> $GITHUB_STEP_SUMMARY
+          cat ci-cd/reports/rag_eval_report.json >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-report
+          path: ci-cd/reports/rag_eval_report.json
+          if-no-files-found: warn

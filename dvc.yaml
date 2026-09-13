@@ -1,0 +1,48 @@
+stages:
+  data:
+    cmd: python -m services.classifier_service.training.data_prep
+    deps:
+      - data/labeled/clauses.csv
+      - services/common/embedder.py
+      - services/classifier_service/training/feature_engineering.py
+      - services/classifier_service/training/data_prep.py
+    params:
+      - params.yml:
+          - data
+          - feature
+    outs:
+      - data/features/clause_features.parquet
+      - data/features/train.npz
+      - data/features/val.npz
+      - data/features/test.npz
+      - data/features/preprocessor.joblib
+      - data/features/label_encoder.joblib
+
+  train:
+    cmd: python -m services.classifier_service.training.train
+    deps:
+      - data/features/train.npz
+      - data/features/val.npz
+      - data/features/label_encoder.joblib
+      - services/classifier_service/training/train.py
+      - services/classifier_service/mlflow/mlflow_util.py
+    params:
+      - params.yml:
+          - train
+          - mlflow
+    # No `outs:` here -- the actual output (trained models) lives in
+    # MLflow's own store (mlruns/ + mlflow.db), not as DVC-tracked files.
+
+  evaluate:
+    cmd: python -m services.classifier_service.training.evaluate
+    deps:
+      - data/features/test.npz
+      - data/features/label_encoder.joblib
+      - services/classifier_service/training/evaluate.py
+      - services/classifier_service/mlflow/mlflow_util.py
+    params:
+      - params.yml:
+          - mlflow
+    metrics:
+      - metrics/eval_metrics.json:
+          cache: false

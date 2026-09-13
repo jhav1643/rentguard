@@ -1,0 +1,52 @@
+{{- if .Values.job.schedule }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "chart.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.job.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "chart.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "chart.serviceAccountName" . }}
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              envFrom:
+                - secretRef:
+                    name: {{ required "envSecretName is required" .Values.envSecretName }}
+              env:
+                {{- range $k, $v := .Values.env }}
+                - name: {{ $k }}
+                  value: {{ $v | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              {{- if .Values.persistence.enabled }}
+              volumeMounts:
+                {{- range .Values.persistence.mounts }}
+                - name: shared-data
+                  mountPath: {{ .mountPath }}
+                  subPath: {{ .subPath }}
+                {{- end }}
+              {{- end }}
+          {{- if .Values.persistence.enabled }}
+          volumes:
+            - name: shared-data
+              persistentVolumeClaim:
+                claimName: {{ .Values.persistence.claimName }}
+          {{- end }}
+{{- end }}

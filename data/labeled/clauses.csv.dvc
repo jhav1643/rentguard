@@ -1,0 +1,5 @@
+outs:
+- md5: 5ab21d33efeeece5eae286f1df9fa8a0
+  size: 251924
+  hash: md5
+  path: clauses.csv

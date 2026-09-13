@@ -1,0 +1,62 @@
+replicaCount: 1
+
+image:
+  # -- Placeholder. Override at install time:
+  #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/rag-api
+  repository: 222042419314.dkr.ecr.us-east-1.amazonaws.com
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+envSecretName: rentguard-env
+
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+
+service:
+  type: ClusterIP
+  # -- Port the RAG API listens on. From docker ps: rag-api was 5000->5000.
+  port: 5000
+  targetPort: 5000
+
+probes:
+  startup:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 30
+  liveness:
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: rag-api
+  annotations: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+persistence:
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []

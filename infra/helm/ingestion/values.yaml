@@ -1,0 +1,45 @@
+image:
+  # -- Placeholder. Override at install time:
+  #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/ingestion
+  repository: 222042419314.dkr.ecr.us-east-1.amazonaws.com/ingestion
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+envSecretName: rentguard-env
+
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+
+# -- Job-specific controls. This chart runs the ingestion pipeline once per
+#    helm install/upgrade and then the pod goes to Completed.
+job:
+  # -- Number of retries before the Job is marked Failed
+  backoffLimit: 2
+  # -- Seconds after completion before the Job is garbage-collected (24h)
+  ttlSecondsAfterFinished: 86400
+  # -- Optional: run on a schedule instead of once. If set, the chart renders
+  #    a CronJob instead of a Job. Leave empty for a one-shot Job.
+  # schedule: "0 2 * * *"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: ingestion
+  annotations: {}
+
+persistence:
+  # -- Ingestion writes to the shared volume (data/, mlruns/, etc.).
+  #    Flip to true once the postgres chart has created rentguard-shared-data.
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []
+    # - subPath: data
+    #   mountPath: /app/data

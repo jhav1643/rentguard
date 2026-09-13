@@ -1,0 +1,53 @@
+# ci-cd/eval/thresholds.yaml
+# Central thresholds for all CI/CD gates.
+# Change here, never in workflows.
+
+classifier:
+  # Absolute minimum for any model to be considered "trained ok".
+  min_macro_f1: 0.55
+  min_precision: 0.50
+  min_recall: 0.50
+  min_auc: 0.70
+
+  # Per-slice minimums (slice name -> min macro-F1).
+  # Catches regressions on specific classes even if overall F1 is fine.
+  slice_min_macro_f1:
+    payment_terms: 0.50
+    termination: 0.50
+    liability: 0.45
+    confidentiality: 0.50
+
+promotion:
+  # Candidate must beat prod by at least this much macro-F1.
+  min_f1_delta: 0.02
+
+  # Candidate AUC must not drop below prod AUC.
+  max_auc_drop: 0.00
+
+  # Candidate p95 latency must not exceed prod by more than this fraction.
+  max_latency_regression: 0.10
+
+  # Any critical slice dropping more than this fails promotion.
+  max_slice_drop: 0.05
+  critical_slices:
+    - payment_terms
+    - termination
+    - liability
+
+  # Statistical significance: lower bound of 95% bootstrap CI
+  # on (candidate - prod) F1 must be > 0.
+  bootstrap_samples: 1000
+  bootstrap_confidence: 0.95
+
+rag:
+  # Golden-set average scores. 0-1 scale.
+  min_faithfulness: 0.75
+  min_answer_relevancy: 0.75
+  min_context_precision: 0.65
+  min_context_recall: 0.65
+
+  # Latency budget (ms) — p95 across the golden set.
+  max_p95_latency_ms: 4000
+
+  # Allow a small number of individual rows to fail before failing the gate.
+  max_failed_rows_pct: 5

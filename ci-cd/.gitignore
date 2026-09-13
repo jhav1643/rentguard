@@ -1,0 +1,42 @@
+# Secrets
+*.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Generated reports & metrics
+reports/
+metrics/
+*.eval.json
+*.predictions.jsonl
+
+# ML artifacts
+*.pkl
+*.joblib
+*.pt
+*.onnx
+mlruns/
+mlartifacts/
+
+# Large data
+*.parquet
+*.csv
+!**/sample-*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# OS
+.DS_Store
+.idea/
+.vscode/
+
+# Gate reports (generated per-run)
+ci-cd/reports/*.json
+!ci-cd/reports/.gitkeep

@@ -1,0 +1,118 @@
+name: Security Scan
+
+# Runs on every PR, weekly schedule, and manually.
+# Fails on HIGH/CRITICAL findings. Runs in parallel with CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # every Monday 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write # needed to upload SARIF
+  actions: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-fs:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy (vuln + secret + config)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  trivy-images:
+    name: Trivy image scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: ingestion, dockerfile: services/ingestion/Dockerfile }
+          - {
+              name: classifier,
+              dockerfile: services/classifier_service/Dockerfile,
+            }
+          - { name: rag-api, dockerfile: services/rag_api/Dockerfile }
+          - { name: backend-api, dockerfile: services/backend_api/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image locally
+        run: |
+          docker build -f ${{ matrix.service.dockerfile }} \
+            -t scan/${{ matrix.service.name }}:${{ github.sha }} .
+
+      - name: Run Trivy on image
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: image
+          image-ref: scan/${{ matrix.service.name }}:${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.service.name }}.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.service.name }}.sarif
+
+  python-deps:
+    name: Python dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit each service's requirements
+        run: |
+          set -e
+          for req in $(find services -name "requirements*.txt"); do
+            echo "→ Auditing $req"
+            pip-audit -r "$req" --strict || exit 1
+          done
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

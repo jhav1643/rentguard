@@ -1,0 +1,52 @@
+image:
+  # -- Placeholder. Override at install time:
+  #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/classifier-service
+  repository: <YOUR_ECR_REPO_URI>/classifier-service
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+envSecretName: rentguard-env
+
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+
+# -- Job-specific controls. This chart runs the full training pipeline
+#    (data_prep → train → evaluate) once per helm install/upgrade, then the
+#    pod goes to Completed.
+job:
+  # -- Retries before the Job is marked Failed. The pipeline is expensive,
+  #    so keep this low — a failure usually means a real problem, not a
+  #    transient glitch.
+  backoffLimit: 1
+  # -- Seconds after completion before the Job is garbage-collected (24h).
+  ttlSecondsAfterFinished: 86400
+  # -- Optional: run on a schedule instead of once. If set, the chart renders
+  #    a CronJob instead of a Job. Leave empty for a one-shot Job.
+  # schedule: "0 2 * * *"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+serviceAccount:
+  create: true
+  name: classifier-service
+  annotations: {}
+
+persistence:
+  # -- The training pipeline reads from /app/data/labeled/... and writes
+  #    model artifacts. Until the shared PVC exists (postgres chart), this
+  #    is disabled and the image must bake in the data it needs.
+  #    Once the PVC exists, flip to true and set the mounts below.
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []
+    # - subPath: data
+    #   mountPath: /app/data
+    # - subPath: mlruns
+    #   mountPath: /app/mlruns

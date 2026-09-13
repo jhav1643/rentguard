@@ -1,0 +1,88 @@
+name: Model Promotion Gate
+
+# Runs after Model Eval Gate succeeds on main, or manually.
+# Compares candidate model in MLflow against current production alias.
+# Promotes candidate -> production ONLY if it beats prod statistically.
+on:
+  workflow_run:
+    workflows: ["Model Eval Gate"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: "MLflow model version (defaults to latest registered)"
+        required: false
+      dry_run:
+        description: "Compare only, don't promote"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  AWS_REGION: us-east-1
+  MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+  MLFLOW_MODEL_NAME: rentguard-classifier
+  CANDIDATE_ALIAS: candidate
+  PROD_ALIAS: production
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install eval dependencies
+        run: |
+          pip install mlflow boto3 pyyaml scipy numpy pandas
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run promotion gate
+        id: gate
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          CANDIDATE_VERSION: ${{ github.event.inputs.candidate_version || '' }}
+        run: |
+          python ci-cd/eval/model_promotion_gate.py \
+            --model-name "$MLFLOW_MODEL_NAME" \
+            --candidate-alias "$CANDIDATE_ALIAS" \
+            --prod-alias "$PROD_ALIAS" \
+            --thresholds ci-cd/eval/thresholds.yaml \
+            --candidate-version "$CANDIDATE_VERSION" \
+            --dry-run "$DRY_RUN" \
+            --output ci-cd/reports/promotion_report.json
+
+      - name: Show report
+        if: always()
+        run: |
+          echo "## Model Promotion Report" >> $GITHUB_STEP_SUMMARY
+          cat ci-cd/reports/promotion_report.json >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload promotion report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotion-report
+          path: ci-cd/reports/promotion_report.json
+          if-no-files-found: warn
+
+      - name: Summary
+        if: steps.gate.outcome == 'success'
+        run: echo "✅ Candidate promoted to production" >> $GITHUB_STEP_SUMMARY

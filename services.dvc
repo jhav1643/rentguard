@@ -1,0 +1,6 @@
+outs:
+- md5: 46f2a45ab3c24f2c9e645a537824c023.dir
+  size: 272218
+  nfiles: 76
+  hash: md5
+  path: services

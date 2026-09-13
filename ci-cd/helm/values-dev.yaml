@@ -1,0 +1,57 @@
+# ci-cd/helm/values-dev.yaml
+# Dev environment: smallest footprint, no autoscaling, no ingress TLS.
+
+global:
+  environment: dev
+  imageRegistry: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  namespace: rentguard-dev
+
+rag-api:
+  replicaCount: 1
+  image:
+    repository: rentguard-rag-api
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  env:
+    ENVIRONMENT: dev
+    RAG_TOP_K: "3"
+  ingress:
+    enabled: false
+
+backend-api:
+  replicaCount: 1
+  image:
+    repository: rentguard-backend-api
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  env:
+    ENVIRONMENT: dev
+  ingress:
+    enabled: false
+
+classifier-service:
+  replicaCount: 1
+  image:
+    repository: rentguard-classifier
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  env:
+    ENVIRONMENT: dev
+  autoscaling:
+    enabled: false
+
+ingestion:
+  replicaCount: 1
+  image:
+    repository: rentguard-ingestion
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  env:
+    ENVIRONMENT: dev
+
+shared-storage:
+  size: 5Gi

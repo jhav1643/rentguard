@@ -1,0 +1,92 @@
+# ===== Python =====
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+.ipynb_checkpoints/
+
+# ===== Secrets — NEVER COMMIT =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*credentials*
+secrets/
+
+# ===== AWS CLI =====
+awscliv2.zip
+aws/
+.aws/
+
+# ===== MLflow =====
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow-*.log
+
+# ===== DVC cache — should NEVER be in git =====
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# ===== Terraform state — CONTAINS SECRETS =====
+*.tfstate
+*.tfstate.backup
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+*.tfvars
+!*.tfvars.example
+
+# ===== AWS credentials =====
+*api-access-key*.json
+*access-key*.json
+eks-*-key.json
+
+# ===== Vector store / processed data =====
+data/vectorstore/
+data/processed/
+data/features/
+data/raw/
+
+# ===== Duplicate metrics =====
+metrics-files/
+
+# ===== Large binaries =====
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.h5
+*.safetensors
+
+# ===== OS / editor =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Logs / temp =====
+*.log
+tmp/
+temp/
+.cache/

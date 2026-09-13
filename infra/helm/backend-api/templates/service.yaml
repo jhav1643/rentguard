@@ -1,0 +1,22 @@
+{{- if eq .Values.service.type "LoadBalancer" }}
+{{- fail "service.type=LoadBalancer provisions a real, continuously-billed AWS ELB on EKS. Use ClusterIP + kubectl port-forward instead. See infra/helm/README.md." }}
+{{- end }}
+{{- if ne .Values.service.type "ClusterIP" }}
+{{- fail (printf "service.type must be ClusterIP, got %s" .Values.service.type) }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "chart.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP

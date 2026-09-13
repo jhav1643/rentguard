@@ -1,0 +1,24 @@
+data:
+  test_size : 0.15
+  variable_size : 0.15
+  random_state : 42
+  threshold : 10
+
+feature:
+  batch_size : 64
+
+train:
+  random_state : 42
+
+  logistic:
+    max_itr : 1000
+
+  gradient_booster:
+    n_estimators : 200
+    max_depth : 3
+    learning_rate : 0.1
+
+mlflow:
+  experiment_name: rentguard-risk-classifier
+  registered_model_name: rentguard-risk-classifier
+  champion_alias: champion

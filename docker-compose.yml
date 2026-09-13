@@ -1,0 +1,82 @@
+# docker-compose.yml
+#
+# Live services (start with plain `docker compose up`):
+#   rag_api, backend_api
+#
+# Batch jobs (run explicitly, one-shot):
+#   docker compose --profile setup run --rm ingestion
+#   docker compose --profile setup run --rm classifier_service
+#
+# No depends_on between rag_api and backend_api — they don't call each
+# other over HTTP (the agent imports retriever.py in-process).
+
+services:
+
+  # ---------------------------------------------------------------
+  # Batch / setup jobs — opt-in via --profile setup
+  # ---------------------------------------------------------------
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    profiles: ["setup"]
+    env_file: .env
+    working_dir: /app
+    restart: "no"
+    volumes:
+      - ./data/raw:/app/data/raw
+      - ./data/processed:/app/data/processed
+      - ./data/vectorstore:/app/data/vectorstore
+
+  classifier_service:
+    build:
+      context: .
+      dockerfile: services/classifier_service/Dockerfile
+    profiles: ["setup"]
+    env_file: .env
+    working_dir: /app
+    restart: "no"
+    volumes:
+      - ./data/labeled:/app/data/labeled
+      - ./data/features:/app/data/features
+      # Mount the directory, not mlflow.db, so Docker doesn't silently
+      # create a directory where MLflow expects a file.
+      - ./mlflow:/app/mlflow
+      - ./mlruns:/app/mlruns
+      - ./metrics:/app/metrics
+    environment:
+      MLFLOW_TRACKING_URI: "sqlite:////app/mlflow/mlflow.db"
+
+  # ---------------------------------------------------------------
+  # Live services — start on plain `docker compose up`
+  # ---------------------------------------------------------------
+
+  rag_api:
+    build:
+      context: .
+      dockerfile: services/rag_api/Dockerfile
+    env_file: .env
+    working_dir: /app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data/vectorstore:/app/data/vectorstore
+      - ./data/raw:/app/data/raw   # jurisdiction discovery at startup
+
+  backend_api:
+    build:
+      context: .
+      dockerfile: services/backend-api/Dockerfile
+    env_file: .env
+    working_dir: /app
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./data/vectorstore:/app/data/vectorstore
+      - ./data/raw:/app/data/raw  
+      - ./data/features:/app/data/features
+      - ./mlflow:/app/mlflow
+      - ./mlruns:/app/mlruns
+    environment:
+      MLFLOW_TRACKING_URI: "sqlite:////app/mlflow/mlflow.db"

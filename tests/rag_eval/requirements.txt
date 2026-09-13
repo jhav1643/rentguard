@@ -1,0 +1,8 @@
+# RentGuard — tests/rag_eval/requirements.txt
+# Scoped to RAGAS itself plus pandas/datasets. Everything else
+# (get_llm, get_embeddings, retrieve) is already installed as part of
+# the services this imports from.
+
+ragas==0.1.16
+datasets==2.21.0
+pandas==2.2.2

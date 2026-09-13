@@ -1,0 +1,95 @@
+name: Model Eval Gate
+
+# Only runs when training-relevant files change -- not every push.
+# Followed by Model Promotion Gate if this passes on main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/labeled/**"
+      - "services/classifier_service/training/**"
+      - "params.yaml"
+      - "ci-cd/eval/thresholds.yaml"
+      - "ci-cd/eval/model_eval_gate.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/classifier_service/training/**"
+      - "ci-cd/eval/thresholds.yaml"
+      - "ci-cd/eval/model_eval_gate.py"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # PREREQUISITE (still not done elsewhere): DVC remote must be
+      # configured and data/labeled/*.csv DVC-tracked and pushed.
+      # See ci-cd/runbooks/ for DVC setup.
+      - name: Install DVC + dependencies
+        run: |
+          pip install "dvc[s3]"
+          pip install -r services/classifier_service/requirements.txt
+          pip install pyyaml
+
+      - name: Configure AWS credentials (for DVC S3 remote)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pull data via DVC
+        run: dvc pull
+
+      - name: Run training pipeline
+        run: |
+          python -m services.classifier_service.training.data_prep
+          python -m services.classifier_service.training.train
+          python -m services.classifier_service.training.evaluate
+
+      # Thresholds live in ci-cd/eval/thresholds.yaml -- never hardcoded.
+      - name: Enforce classifier thresholds
+        run: |
+          python ci-cd/eval/model_eval_gate.py \
+            --metrics metrics/eval_metrics.json \
+            --thresholds ci-cd/eval/thresholds.yaml \
+            --output ci-cd/reports/model_eval_report.json
+
+      - name: Show eval report
+        if: always()
+        run: |
+          echo "## Model Eval Report" >> $GITHUB_STEP_SUMMARY
+          if [ -f ci-cd/reports/model_eval_report.json ]; then
+            cat ci-cd/reports/model_eval_report.json >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_No report produced._" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-eval-artifacts
+          path: |
+            metrics/
+            ci-cd/reports/model_eval_report.json
+          if-no-files-found: warn

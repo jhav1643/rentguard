@@ -1,0 +1,80 @@
+# -- Number of pod replicas
+replicaCount: 1
+
+image:
+  # -- Placeholder. Override at install time:
+  #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/backend-api
+  repository: <YOUR_ECR_REPO_URI>/backend-api
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+# -- Name of a Secret that MUST already exist in the namespace.
+#    Helm never creates this Secret. Create it once with:
+#      kubectl create secret generic rentguard-env \
+#        --namespace rentguard --from-env-file=.env
+envSecretName: rentguard-env
+
+# -- Non-secret environment variables. Secrets come from envSecretName above.
+env:
+  LOG_LEVEL: info
+  PYTHONUNBUFFERED: "1"
+
+service:
+  # -- ClusterIP only. LoadBalancer provisions a billed AWS ELB on EKS;
+  #    the template hard-fails if you set it. Use kubectl port-forward instead.
+  type: ClusterIP
+  port: 5001
+  targetPort: 5001
+
+# -- Probe paths and timings.
+#    startupProbe gates liveness/readiness until the app is up, giving slow
+#    cold starts (heavy LangChain imports) a generous budget without weakening
+#    the steady-state checks.
+probes:
+  startup:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 30 # 5s + 30*10s = ~5 min max startup budget
+  liveness:
+    path: /health
+    initialDelaySeconds: 0 # startup probe handles the initial wait
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 0 # startup probe handles the initial wait
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount for this service.
+  create: true
+  name: backend-api
+  # -- IRSA annotation goes here once the IAM role exists (deferred).
+  annotations: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+persistence:
+  # -- Disabled by default. The shared PVC is created by the postgres chart.
+  #    Once that chart is installed and the PVC exists, flip to true and
+  #    adjust `mounts` to match docker-compose.yaml's layout.
+  enabled: false
+  claimName: rentguard-shared-data
+  mounts: []
+    # - subPath: data
+    #   mountPath: /app/data
