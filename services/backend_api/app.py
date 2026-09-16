@@ -74,6 +74,10 @@ def normalize_jurisdiction(jurisdiction):
 
 
 def retrieve_docs(query, jurisdiction=None):
+    if retrieve is None:
+        print("Retrieval service not available")
+        return []
+    
     jur = normalize_jurisdiction(jurisdiction)
 
     with RETRIEVAL_LATENCY.time():

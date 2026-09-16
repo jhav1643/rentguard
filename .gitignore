@@ -106,3 +106,5 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .npm/
+
+docs/design/old-umbrella-values

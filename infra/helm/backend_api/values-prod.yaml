@@ -2,8 +2,8 @@
 replicaCount: 3
 
 image:
-  repository: "" # injected by CI: --set image.repository=<ECR>/rentguard-backend-api
-  tag: "" # injected by CI: --set image.tag=<git sha>
+  repository: ""
+  tag: ""
   pullPolicy: IfNotPresent
 
 envSecretName: rentguard-env

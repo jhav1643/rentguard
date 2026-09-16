@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   # -- Placeholder. Override at install time:
   #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/rag-api
-  repository: 222042419314.dkr.ecr.us-east-1.amazonaws.com
+  repository: <YOUR_ECR_REPO_URI>/rag-api
   tag: v0.1.0
   pullPolicy: IfNotPresent
 
@@ -53,7 +53,7 @@ serviceAccount:
   annotations: {}
 
 podDisruptionBudget:
-  enabled: true
+  enabled: false
   minAvailable: 1
 
 persistence:

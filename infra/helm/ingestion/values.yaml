@@ -1,7 +1,7 @@
 image:
   # -- Placeholder. Override at install time:
   #   --set image.repository=222042419314.dkr.ecr.us-east-1.amazonaws.com/ingestion
-  repository: 222042419314.dkr.ecr.us-east-1.amazonaws.com/ingestion
+  repository: <YOUR_ECR_REPO_URI>/ingestion
   tag: v0.1.0
   pullPolicy: IfNotPresent
 
