@@ -42,50 +42,7 @@ What is RentGuard? RentGuard solves two problems for tenants, landlords, and leg
 
 The project is deliberately full-lifecycle: it covers ingestion, embeddings, vector search, agent orchestration, model training, model registry, **API** serving, a chat UI, containerization, CI/CD, Kubernetes deployment, and observability — all in one repo. It's a reference implementation of what *shipping ML to production* actually looks like, not a notebook.
 
-Architecture
-text
-    ┌─────────────────────────────────────┐
-    │        React + Vite Frontend        │
-    │   [http://localhost:**8080**](http://localhost:**8080**) (nginx)     │
-    └──────────────────┬──────────────────┘
-    │  /api/chat
-    ▼
-    ┌─────────────────────────────────────┐
-    │         backend_api  :**5001**          │
-    │   Flask · LangGraph · Prometheus    │
-    └───────┬──────────────────┬──────────┘
-    │                  │
-    in-process│                  │in-process
-    ▼                  ▼
-    ┌───────────────────────┐   ┌─────────────────────┐
-    │  agent_orchestrator   │   │  classifier_service │
-    │  (LangGraph state)    │   │  (MLflow champion)  │
-    └───────────┬───────────┘   └──────────┬──────────┘
-    │                          │
-    ▼                          ▼
-    ┌───────────────────────┐   ┌─────────────────────┐
-    │   rag_api  :**5000**      │   │   MLflow  :**5002**     │
-    │  Retrieval + Rerank   │   │  Registry + Alias   │
-    └───────────┬───────────┘   └─────────────────────┘
-    │
-    ▼
-    ┌───────────────────────┐
-    │  ChromaDB (persisted) │
-    │  data/vectorstore/    │
-    └───────────────────────┘
-    ▲
-    │  writes
-    ┌───────────────────────┐
-    │  ingestion (batch)    │
-    │  **272** PDFs → 1,**106** chunks│
-    └───────────────────────┘
 
-    ┌──────────────────────────────────────────────────────────────┐
-    │  Observability:  Prometheus :**9090**  →  Grafana :**3000**          │
-    │  Custom metrics: retrieval latency, empty-retrieval rate,    │
-    │  **LLM** tokens, citation-check pass/fail, **HTTP** 5xx              │
-    └──────────────────────────────────────────────────────────────┘
-### The Complete Flow
 ## Ingestion (batch, runs once)
 text
 data/raw/delhi/*.pdf
