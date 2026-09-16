@@ -50,41 +50,41 @@ The project is deliberately full-lifecycle: it covers ingestion, embeddings, vec
 
 Architecture
 text
-                          ┌─────────────────────────────────────┐
-                          │        React + Vite Frontend        │
-                          │   http://localhost:8080 (nginx)     │
-                          └──────────────────┬──────────────────┘
-                                             │  /api/chat
-                                             ▼
-                          ┌─────────────────────────────────────┐
-                          │         backend_api  :5001          │
-                          │   Flask · LangGraph · Prometheus    │
-                          └───────┬──────────────────┬──────────┘
-                                  │                  │
-                        in-process│                  │in-process
-                                  ▼                  ▼
-                 ┌───────────────────────┐   ┌─────────────────────┐
-                 │  agent_orchestrator   │   │  classifier_service │
-                 │  (LangGraph state)    │   │  (MLflow champion)  │
-                 └───────────┬───────────┘   └──────────┬──────────┘
-                             │                          │
-                             ▼                          ▼
-                 ┌───────────────────────┐   ┌─────────────────────┐
-                 │   rag_api  :5000      │   │   MLflow  :5002     │
-                 │  Retrieval + Rerank   │   │  Registry + Alias   │
-                 └───────────┬───────────┘   └─────────────────────┘
-                             │
-                             ▼
-                 ┌───────────────────────┐
-                 │  ChromaDB (persisted) │
-                 │  data/vectorstore/    │
-                 └───────────────────────┘
-                             ▲
-                             │  writes
-                 ┌───────────────────────┐
-                 │  ingestion (batch)    │
-                 │  272 PDFs → 1,106 chunks│
-                 └───────────────────────┘
+        ┌─────────────────────────────────────┐
+        │        React + Vite Frontend        │
+        │   http://localhost:8080 (nginx)     │
+        └──────────────────┬──────────────────┘
+                           │  /api/chat
+                           ▼
+        ┌─────────────────────────────────────┐
+        │         backend_api  :5001          │
+        │   Flask · LangGraph · Prometheus    │
+        └───────┬──────────────────┬──────────┘
+                │                  │
+      in-process│                  │in-process
+                ▼                  ▼
+┌───────────────────────┐   ┌─────────────────────┐
+│  agent_orchestrator   │   │  classifier_service │
+│  (LangGraph state)    │   │  (MLflow champion)  │
+└───────────┬───────────┘   └──────────┬──────────┘
+           │                          │
+           ▼                          ▼
+┌───────────────────────┐   ┌─────────────────────┐
+│   rag_api  :5000      │   │   MLflow  :5002     │
+│  Retrieval + Rerank   │   │  Registry + Alias   │
+└───────────┬───────────┘   └─────────────────────┘
+           │
+           ▼
+┌───────────────────────┐
+│  ChromaDB (persisted) │
+│  data/vectorstore/    │
+└───────────────────────┘
+           ▲
+           │  writes
+┌───────────────────────┐
+│  ingestion (batch)    │
+│  272 PDFs → 1,106 chunks│
+└───────────────────────┘
 
   ┌──────────────────────────────────────────────────────────────┐
   │  Observability:  Prometheus :9090  →  Grafana :3000          │
